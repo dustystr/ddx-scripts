@@ -7,10 +7,10 @@ with passwordless sudo access and SSH key authentication.
 
 import argparse
 import sys
-import os
 import paramiko
 from scp import SCPClient
 import subprocess
+from pathlib import Path
 
 def execute_ssh_command(ssh_client, command, sudo_password=None, dry_run=False):
     """Execute a command over SSH and return the result."""
@@ -71,6 +71,7 @@ def run_local_command(command, dry_run=False):
 def main():
     parser = argparse.ArgumentParser(description='Setup semaphore user on remote host')
     parser.add_argument('target_ip', help='Target IP address to connect to')
+    parser.add_argument('--semaphore-password', required=True, help='Password for semaphore user (required)')
     parser.add_argument('--ssh-user', default='root', help='SSH username (default: root)')
     parser.add_argument('--ssh-password', help='SSH password (will prompt if not provided)')
     parser.add_argument('--ssh-key', help='Path to SSH private key')
@@ -122,14 +123,47 @@ def main():
             else:
                 print("[DRY RUN] Using password authentication")
         
-        # Step 2: Create semaphore user
+        # Step 2: Create semaphore user with password
         print("\n1. Creating semaphore user...")
-        success, output = execute_ssh_command(ssh_client, "sudo adduser --disabled-password --gecos '' semaphore", 
-                                            ssh_password, args.dry_run)
-        if not success and not args.dry_run:
-            print("Failed to create semaphore user")
-            sys.exit(1)
-        print("✓ Semaphore user created successfully")
+        if args.dry_run:
+            print(f"[DRY RUN] Would create user 'semaphore' with password")
+            # Simulate user creation commands
+            success, output = execute_ssh_command(
+                ssh_client, 
+                f"sudo adduser --gecos '' --disabled-password semaphore", 
+                ssh_password, 
+                args.dry_run
+            )
+            success, output = execute_ssh_command(
+                ssh_client,
+                f"echo 'semaphore:{args.semaphore_password}' | sudo chpasswd",
+                ssh_password,
+                args.dry_run
+            )
+        else:
+            # Create user without password initially
+            success, output = execute_ssh_command(
+                ssh_client, 
+                "sudo adduser --gecos '' --disabled-password semaphore", 
+                ssh_password, 
+                args.dry_run
+            )
+            if not success:
+                print("Failed to create semaphore user")
+                sys.exit(1)
+            
+            # Set password for the user
+            success, output = execute_ssh_command(
+                ssh_client,
+                f"echo 'semaphore:{args.semaphore_password}' | sudo chpasswd",
+                ssh_password,
+                args.dry_run
+            )
+            if not success:
+                print("Failed to set password for semaphore user")
+                sys.exit(1)
+        
+        print("✓ Semaphore user created successfully with specified password")
         
         # Step 3 & 4: Create sudoers file
         print("\n2. Creating sudoers file...")
@@ -139,15 +173,18 @@ def main():
             print(f"[DRY RUN] Would create file /etc/sudoers.d/semaphore with content:")
             print(f"[DRY RUN] '{sudoers_content.strip()}'")
         else:
-            # Create temporary file
-            temp_file = "/tmp/semaphore_sudoers"
-            with open(temp_file, 'w') as f:
-                f.write(sudoers_content)
+            # Create temporary file using pathlib
+            temp_file = Path("/tmp/semaphore_sudoers")
+            try:
+                temp_file.write_text(sudoers_content)
+            except Exception as e:
+                print(f"Error creating temporary file: {e}")
+                sys.exit(1)
             
             # Use SCP to transfer the file
             try:
                 scp = SCPClient(ssh_client.get_transport())
-                transfer_success = scp_put_file(scp, temp_file, '/tmp/semaphore_sudoers', args.dry_run)
+                transfer_success = scp_put_file(scp, str(temp_file), '/tmp/semaphore_sudoers', args.dry_run)
                 scp.close()
                 
                 if transfer_success:
@@ -176,9 +213,9 @@ def main():
                 print(f"Error during file transfer: {e}")
                 sys.exit(1)
             
-            # Clean up local temp file
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
+            # Clean up local temp file using pathlib
+            if temp_file.exists():
+                temp_file.unlink()
         
         print("✓ Sudoers file created successfully")
         
@@ -200,19 +237,23 @@ def main():
         
         # Step 7: Copy SSH key to semaphore user
         print("\n5. Copying SSH key to semaphore user...")
-        ssh_key_path = "/home/semaphore/.ssh/id_ed25519.pub"
+        ssh_key_path = Path("/home/semaphore/.ssh/id_ed25519.pub")
         
         if args.dry_run:
             print(f"[DRY RUN] Would check for SSH key at: {ssh_key_path}")
             print(f"[DRY RUN] Would execute: sudo ssh-copy-id -i {ssh_key_path} semaphore@{args.target_ip}")
         else:
-            if not os.path.exists(ssh_key_path):
+            # Используем pathlib для проверки существования файла
+            if not ssh_key_path.exists():
                 print(f"Warning: SSH key not found at {ssh_key_path}")
                 print("Please generate SSH key first with: ssh-keygen -t ed25519 -f /home/semaphore/.ssh/id_ed25519")
+                print("Or copy the key manually using password authentication.")
             else:
                 try:
+                    # Use sshpass to provide password for ssh-copy-id
                     result = subprocess.run([
-                        'sudo', 'ssh-copy-id', '-i', ssh_key_path, 
+                        'sshpass', '-p', args.semaphore_password,
+                        'ssh-copy-id', '-i', str(ssh_key_path), 
                         f'semaphore@{args.target_ip}'
                     ], capture_output=True, text=True)
                     
@@ -220,10 +261,45 @@ def main():
                         print("✓ SSH key copied successfully!")
                     else:
                         print(f"Failed to copy SSH key: {result.stderr}")
-                        # Alternative manual method
-                        print("You may need to manually copy the SSH key or check password authentication")
-                except Exception as e:
-                    print(f"Error during ssh-copy-id: {e}")
+                        print("You may need to install sshpass or copy the key manually")
+                        print(f"Manual command: cat {ssh_key_path} | ssh semaphore@{args.target_ip} 'mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys'")
+                except FileNotFoundError:
+                    print("sshpass not found. Trying without password automation...")
+                    # Alternative manual approach
+                    try:
+                        # Read the public key
+                        public_key = ssh_key_path.read_text().strip()
+                        # Use SSH to add the key manually
+                        temp_ssh = paramiko.SSHClient()
+                        temp_ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                        temp_ssh.connect(
+                            hostname=args.target_ip,
+                            username='semaphore',
+                            password=args.semaphore_password
+                        )
+                        
+                        # Ensure .ssh directory exists and add key
+                        commands = [
+                            'mkdir -p ~/.ssh',
+                            f'echo "{public_key}" >> ~/.ssh/authorized_keys',
+                            'chmod 700 ~/.ssh',
+                            'chmod 600 ~/.ssh/authorized_keys'
+                        ]
+                        
+                        for cmd in commands:
+                            stdin, stdout, stderr = temp_ssh.exec_command(cmd)
+                            exit_status = stdout.channel.recv_exit_status()
+                            if exit_status != 0:
+                                print(f"Failed to execute: {cmd}")
+                                break
+                        else:
+                            print("✓ SSH key configured successfully!")
+                        
+                        temp_ssh.close()
+                        
+                    except Exception as e:
+                        print(f"Error configuring SSH key: {e}")
+                        print("Please configure SSH key manually")
         
         print("\n" + "=" * 50)
         if args.dry_run:
@@ -233,6 +309,7 @@ def main():
             print("SETUP COMPLETED SUCCESSFULLY!")
             print(f"You can now SSH to the remote host as semaphore user:")
             print(f"  ssh semaphore@{args.target_ip}")
+            print(f"Password: {args.semaphore_password}")
         
     except paramiko.AuthenticationException:
         print("Authentication failed. Please check your credentials.")
