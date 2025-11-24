@@ -84,10 +84,10 @@ class ConfluenceClient:
 
 def main():
     # Конфигурация
-    CONFLUENCE_URL = "http://confluence.ddxfitness.ru/"
-    USERNAME = "a.korostelev"
-    PASSWORD = "LightRoom232!"  # Рекомендуется использовать API токен вместо пароля
-    PAGE_ID = "359413495"  # ID страницы с таблицей
+    CONFLUENCE_URL = ""
+    USERNAME = ""
+    PASSWORD = ""  # Рекомендуется использовать API токен вместо пароля
+    PAGE_ID = ""  # ID страницы с таблицей
     
     # Создаем клиент Confluence
     confluence = ConfluenceClient(CONFLUENCE_URL, USERNAME, PASSWORD)
@@ -120,4 +120,5 @@ def main():
         print(f"Произошла ошибка: {e}")
 
 if __name__ == "__main__":
+
     main()
