@@ -262,7 +262,7 @@ def main():
         
         # Step 7: Copy SSH key to semaphore user
         print("\n6. Copying SSH key to semaphore user...")
-        ssh_key_path = Path("/home/semaphore/.ssh/id_ed25519.pub")
+        ssh_key_path = Path("/home/anko/id_ed25519.pub")
         
         if args.dry_run:
             print(f"[DRY RUN] Would check for SSH key at: {ssh_key_path}")
