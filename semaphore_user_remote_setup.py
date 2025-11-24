@@ -152,16 +152,34 @@ def main():
                 print("Failed to create semaphore user")
                 sys.exit(1)
             
-            # Set password for the user
+            # Set password for the user - используем правильную команду с sudo -S
+            # Экранируем пароль для безопасной передачи
+            escaped_password = args.semaphore_password.replace("'", "'\"'\"'")
+            chpasswd_command = f"echo 'semaphore:{escaped_password}' | sudo -S chpasswd"
+            
             success, output = execute_ssh_command(
                 ssh_client,
-                f"echo 'semaphore:{args.semaphore_password}' | sudo chpasswd",
+                chpasswd_command,
                 ssh_password,
                 args.dry_run
             )
             if not success:
                 print("Failed to set password for semaphore user")
-                sys.exit(1)
+                # Попробуем альтернативный метод
+                print("Trying alternative method to set password...")
+                
+                # Альтернативный метод: используем sudo с опцией -S для chpasswd
+                alternative_command = f"echo '{ssh_password}' | sudo -S sh -c \"echo 'semaphore:{escaped_password}' | chpasswd\""
+                success, output = execute_ssh_command(
+                    ssh_client,
+                    alternative_command,
+                    None,  # Пароль уже в команде
+                    args.dry_run
+                )
+                
+                if not success:
+                    print("Alternative method also failed")
+                    sys.exit(1)
         
         print("✓ Semaphore user created successfully with specified password")
         
@@ -221,7 +239,7 @@ def main():
         
         # Step 5: Set correct permissions
         print("\n3. Setting file permissions...")
-        success, output = execute_ssh_command(ssh_client, "sudo chmod 440 /etc/sudoers.d/semaphore", 
+        success, output = execute_ssh_command(ssh_client, "sudo chmod 440 /etc/sudoers.d/semaphore && sudo chown root:root /etc/sudoers.d/semaphore", 
                                             ssh_password, args.dry_run)
         if not success and not args.dry_run:
             print("Failed to set permissions")
@@ -254,6 +272,7 @@ def main():
                     result = subprocess.run([
                         'sshpass', '-p', args.semaphore_password,
                         'ssh-copy-id', '-i', str(ssh_key_path), 
+                        '-o', 'StrictHostKeyChecking=no',
                         f'semaphore@{args.target_ip}'
                     ], capture_output=True, text=True)
                     
