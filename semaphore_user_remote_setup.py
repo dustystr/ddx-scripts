@@ -239,10 +239,17 @@ def main():
         
         # Step 5: Set correct permissions
         print("\n3. Setting file permissions...")
-        success, output = execute_ssh_command(ssh_client, "sudo chmod 440 /etc/sudoers.d/semaphore && sudo chown root:root /etc/sudoers.d/semaphore", 
+        success, output = execute_ssh_command(ssh_client, "sudo chmod 440 /etc/sudoers.d/semaphore", 
                                             ssh_password, args.dry_run)
         if not success and not args.dry_run:
             print("Failed to set permissions")
+            sys.exit(1)
+
+        print("\n3. Setting file owner...")
+        success, output = execute_ssh_command(ssh_client, "sudo chown root:root /etc/sudoers.d/semaphore", 
+                                            ssh_password, args.dry_run)
+        if not success and not args.dry_run:
+            print("Failed to set owner")
             sys.exit(1)
         print("✓ Permissions set successfully")
         
