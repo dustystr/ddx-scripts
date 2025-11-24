@@ -245,7 +245,7 @@ def main():
             print("Failed to set permissions")
             sys.exit(1)
 
-        print("\n3. Setting file owner...")
+        print("\n4. Setting file owner...")
         success, output = execute_ssh_command(ssh_client, "sudo chown root:root /etc/sudoers.d/semaphore", 
                                             ssh_password, args.dry_run)
         if not success and not args.dry_run:
@@ -256,12 +256,12 @@ def main():
         # Step 6: Close SSH connection
         if ssh_client and not args.dry_run:
             ssh_client.close()
-            print("\n4. SSH connection closed")
+            print("\n5. SSH connection closed")
         elif args.dry_run:
             print("[DRY RUN] Would close SSH connection")
         
         # Step 7: Copy SSH key to semaphore user
-        print("\n5. Copying SSH key to semaphore user...")
+        print("\n6. Copying SSH key to semaphore user...")
         ssh_key_path = Path("/home/semaphore/.ssh/id_ed25519.pub")
         
         if args.dry_run:
