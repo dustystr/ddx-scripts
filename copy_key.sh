@@ -1,19 +1,23 @@
 #!/bin/bash
 
-# Скрипт для копирования SSH ключа на удаленный сервер
-# Использование: ./copy_key.sh <ip_address>
+# Скрипт для копирования SSH ключа с использованием expect и пароля как аргумента
+# Использование: ./copy_key_with_password.sh <ip_address> <password> [username]
 
-# Проверка наличия аргумента
-if [ $# -ne 1 ]; then
-    echo "Использование: $0 <ip_address>"
-    echo "Пример: $0 192.168.82.167"
-    echo "Пример: $0 10.0.0.5"
+# Проверка наличия аргументов
+if [ $# -lt 2 ]; then
+    echo "Использование: $0 <ip_address> <password> [username]"
+    echo "Пример: $0 192.168.82.167 mypassword123"
+    echo "Пример: $0 192.168.82.167 mypassword123 semaphore"
+    echo ""
+    echo "Безопасная альтернатива (передача через переменную):"
+    echo "  PASSWORD='mypass' $0 192.168.82.167 \"\$PASSWORD\""
     exit 1
 fi
 
 IP_ADDRESS="$1"
-USERNAME="semaphore"
-PUBLIC_KEY="/var/ddx/semaphore_id.pub"
+PASSWORD="$2"
+USERNAME="${3:-semaphore}"  # По умолчанию используем semaphore
+PUBLIC_KEY="/home/anko/id_ed25519.pub"
 
 # Проверка существования публичного ключа
 if [ ! -f "$PUBLIC_KEY" ]; then
@@ -21,43 +25,80 @@ if [ ! -f "$PUBLIC_KEY" ]; then
     exit 1
 fi
 
-# Проверка формата IP-адреса (базовая проверка)
-if ! [[ "$IP_ADDRESS" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-    echo "Ошибка: Некорректный формат IP-адреса: $IP_ADDRESS"
-    exit 1
-fi
+# Читаем публичный ключ
+PUB_KEY_CONTENT=$(cat "$PUBLIC_KEY")
 
-# Настройки SSH
-SSH_OPTS="-o StrictHostKeyChecking=no \
-          -o UserKnownHostsFile=/dev/null \
-          -o ConnectTimeout=10 \
-          -o BatchMode=yes \
-          -o PasswordAuthentication=no"
+# Используем expect для автоматического ввода пароля
+expect << EOF
+set timeout 15
+set send_slow {1 .01}
 
-echo "Копируем SSH ключ на сервер $IP_ADDRESS..."
+# Отключаем вывод в stdout для безопасности
+log_user 0
 
-# Копируем ключ
-cat "$PUBLIC_KEY" | \
-    ssh $SSH_OPTS "${USERNAME}@${IP_ADDRESS}" \
-    'mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys'
+spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ${USERNAME}@${IP_ADDRESS} "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
 
-# Проверяем результат
-if [ $? -eq 0 ]; then
-    echo "✅ Ключ успешно скопирован на $IP_ADDRESS"
+expect {
+    timeout {
+        puts "Ошибка: Таймаут подключения"
+        exit 1
+    }
     
-    # Дополнительная проверка подключения
-    echo "Проверяем подключение..."
-    ssh $SSH_OPTS "${USERNAME}@${IP_ADDRESS}" "echo 'SSH подключение успешно настроено!'" 2>/dev/null
+    "Connection refused" {
+        puts "Ошибка: Подключение отклонено"
+        exit 1
+    }
+    
+    "No route to host" {
+        puts "Ошибка: Нет маршрута до хоста"
+        exit 1
+    }
+    
+    "password:" {
+        send -- "$PASSWORD\r"
+        exp_continue
+    }
+    
+    "Permission denied" {
+        puts "Ошибка: Неверный пароль или доступ запрещен"
+        exit 1
+    }
+    
+    "Are you sure you want to continue connecting" {
+        send "yes\r"
+        exp_continue
+    }
+}
+
+expect {
+    eof {
+        puts "Успех: Ключ скопирован"
+        exit 0
+    }
+    
+    timeout {
+        puts "Ошибка: Таймаут после отправки пароля"
+        exit 1
+    }
+}
+EOF
+
+# Проверяем результат выполнения expect
+EXPECT_RESULT=$?
+
+if [ $EXPECT_RESULT -eq 0 ]; then
+    echo "✅ SSH ключ успешно скопирован на ${USERNAME}@${IP_ADDRESS}"
+    
+    # Дополнительная проверка (без пароля, если ключ работает)
+    echo "Проверяем подключение без пароля..."
+    ssh -o BatchMode=yes -o ConnectTimeout=5 ${USERNAME}@${IP_ADDRESS} "echo 'Подключение успешно!'" 2>/dev/null
+    
     if [ $? -eq 0 ]; then
-        echo "✅ Подключение работает корректно"
+        echo "✅ Подключение по SSH ключу работает корректно"
     else
-        echo "⚠️  Ключ скопирован, но возникли проблемы с проверкой подключения"
+        echo "⚠️  Ключ скопирован, но автоматическое подключение не работает"
     fi
 else
-    echo "❌ Ошибка при копировании ключа на $IP_ADDRESS"
-    echo "Возможные причины:"
-    echo "  - Сервер недоступен"
-    echo "  - Пользователь $USERNAME не существует на сервере"
-    echo "  - Проблемы с сетевым подключением"
+    echo "❌ Ошибка при копировании ключа"
     exit 1
 fi
