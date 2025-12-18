@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Скрипт для автоматического копирования SSH ключа с использованием ssh-copy-id
-# Использование: ./ssh_copy_auto.sh <ip_address> <password>
+# Использование: ./copy_key.sh <ip_address> <password>
 
 # Проверка наличия аргументов
 if [ $# -ne 2 ]; then
