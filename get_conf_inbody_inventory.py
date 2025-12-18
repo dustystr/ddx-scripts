@@ -75,6 +75,7 @@ class ConfluenceClient:
         """Сохранить IP-адреса в файл"""
         try:
             with open(filename, 'w', encoding='utf-8') as f:
+                f.write('[labrat]\n')
                 for ip in ip_addresses:
                     f.write(ip + '\n')
             print(f"Найдено {len(ip_addresses)} уникальных IP-адресов. Сохранено в файл: {filename}")
@@ -122,3 +123,4 @@ def main():
 if __name__ == "__main__":
 
     main()
+
