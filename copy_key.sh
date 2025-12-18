@@ -13,7 +13,7 @@ fi
 
 IP_ADDRESS="$1"
 USERNAME="semaphore"
-PUBLIC_KEY="/home/anko/id_ed25519.pub"
+PUBLIC_KEY="/var/ddx/semaphore_id.pub"
 
 # Проверка существования публичного ключа
 if [ ! -f "$PUBLIC_KEY" ]; then
