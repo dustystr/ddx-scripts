@@ -146,39 +146,6 @@ else
     echo "Пробую прямой метод..."
 fi
 
-# Вариант 3: Прямой метод с созданием authorized_keys вручную
-echo ""
-echo "🛠️  Пробую прямой метод..."
-
-# Используем expect для прямого копирования ключа
-/usr/bin/expect << EOF 2>/dev/null
-set timeout 15
-spawn ssh -o StrictHostKeyChecking=no ${USERNAME}@${IP_ADDRESS} "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && echo 'SSH_KEY_COPIED'"
-expect {
-    "password:" { send "$PASSWORD\r" }
-    "(yes/no)" { send "yes\r"; exp_continue }
-    timeout { exit 1 }
-}
-expect {
-    "SSH_KEY_COPIED" { exit 0 }
-    eof { exit 0 }
-    timeout { exit 1 }
-}
-EOF
-
-if [ $? -eq 0 ]; then
-    echo "✅ Ключ успешно установлен через прямой метод"
-else
-    echo "❌ Все методы не удались"
-    echo ""
-    echo "Возможные причины:"
-    echo "  1. Неверный пароль для пользователя '$USERNAME'"
-    echo "  2. Сервер $IP_ADDRESS недоступен"
-    echo "  3. SSH сервер не запущен на порту 22"
-    echo "  4. Пользователь '$USERNAME' не существует на сервере"
-    exit 1
-fi
-
 # Финальная проверка
 echo ""
 echo "🔍 Проверяю подключение без пароля..."
