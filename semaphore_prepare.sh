@@ -51,7 +51,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     echo "Обработка строки $line_number: '$line_cleaned'"
     
     # Выполняем Python скрипт с аргументом
-    python3 "$PYTHON_SCRIPT" "$line_cleaned" --ssh-user administrator --ssh-password inbody --semaphore-password "sBrEVAPHV2Ukgy2L"
+    /home/anko/repo/ddx-scripts/ddx-env/bin/python3 "$PYTHON_SCRIPT" "$line_cleaned" --ssh-user administrator --ssh-password inbody --semaphore-password "sBrEVAPHV2Ukgy2L"
     . /home/anko/repo/ddx-scripts/copy_key.sh $line_cleaned sBrEVAPHV2Ukgy2L
     
     echo "--------------------------------"
