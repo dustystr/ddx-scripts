@@ -52,6 +52,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     
     # Выполняем Python скрипт с аргументом
     python3 "$PYTHON_SCRIPT" "$line_cleaned"
+    . /home/anko/repo/ddx-scripts/copy_key.sh $line_cleaned sBrEVAPHV2Ukgy2L
     
     echo "--------------------------------"
 done < "$INPUT_FILE"
