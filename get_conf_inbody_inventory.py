@@ -1,6 +1,8 @@
 import requests
 import re
 import json
+import argparse
+import getpass
 from typing import List
 
 class ConfluenceClient:
@@ -83,20 +85,52 @@ class ConfluenceClient:
             print(f"Ошибка при записи в файл: {e}")
             raise
 
+def get_password_interactive(prompt: str = "Введите пароль: ") -> str:
+    """Получить пароль интерактивно (без отображения ввода)"""
+    return getpass.getpass(prompt)
+
 def main():
-    # Конфигурация
-    CONFLUENCE_URL = ""
-    USERNAME = ""
-    PASSWORD = ""  # Рекомендуется использовать API токен вместо пароля
-    PAGE_ID = ""  # ID страницы с таблицей
+    parser = argparse.ArgumentParser(
+        description='Извлечение IP-адресов из таблицы Confluence',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+Примеры использования:
+  python script.py --url https://confluence.example.com --username user --page-id 123456
+  python script.py --url https://confluence.example.com --username user --password pass123 --page-id 123456
+  python script.py --url https://confluence.example.com --username user --page-id 123456 --output my_ips.txt
+        '''
+    )
+    
+    # Обязательные аргументы
+    parser.add_argument('--url', required=True, help='URL Confluence (например, https://confluence.example.com)')
+    parser.add_argument('--username', required=True, help='Имя пользователя Confluence')
+    parser.add_argument('--page-id', required=True, help='ID страницы Confluence')
+    
+    # Необязательные аргументы
+    parser.add_argument('--password', help='Пароль (если не указан, запросится интерактивно)')
+    parser.add_argument('--output', default='ip_addresses.txt', help='Имя выходного файла (по умолчанию: ip_addresses.txt)')
+    parser.add_argument('--no-ssl-verify', action='store_true', help='Отключить проверку SSL сертификата')
+    
+    args = parser.parse_args()
+    
+    # Получаем пароль
+    if args.password:
+        password = args.password
+    else:
+        password = get_password_interactive(f"Введите пароль для пользователя {args.username}: ")
     
     # Создаем клиент Confluence
-    confluence = ConfluenceClient(CONFLUENCE_URL, USERNAME, PASSWORD)
+    confluence = ConfluenceClient(args.url, args.username, password)
+    
+    # Опционально отключаем проверку SSL
+    if args.no_ssl_verify:
+        confluence.session.verify = False
+        requests.packages.urllib3.disable_warnings()
     
     try:
         # 1. Получаем содержимое страницы
-        print("Получаем содержимое страницы...")
-        page_content = confluence.get_page_content(PAGE_ID)
+        print(f"Получаем содержимое страницы {args.page_id}...")
+        page_content = confluence.get_page_content(args.page_id)
         
         # 2. Извлекаем таблицу
         print("Извлекаем таблицу...")
@@ -107,11 +141,11 @@ def main():
         ip_addresses = confluence.extract_ip_addresses(table_html)
         
         # 4. Сохраняем в файл
-        confluence.save_ips_to_file(ip_addresses)
+        confluence.save_ips_to_file(ip_addresses, args.output)
         
         # Выводим найденные адреса
         if ip_addresses:
-            print("\nНайденные IP-адреса:")
+            print(f"\nНайдено {len(ip_addresses)} уникальных IP-адресов:")
             for ip in ip_addresses:
                 print(f"  - {ip}")
         else:
@@ -121,6 +155,4 @@ def main():
         print(f"Произошла ошибка: {e}")
 
 if __name__ == "__main__":
-
     main()
-
